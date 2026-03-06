@@ -1,0 +1,102 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String    @id @default(uuid())
+  email        String    @unique
+  passwordHash String
+  plan         Plan      @default(STARTER)
+  stripeId     String?   @unique
+  booksThisMonth Int     @default(0)
+  resetAt      DateTime  @default(now())
+  projects     Project[]
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
+
+model Project {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title       String   @default("Untitled Book")
+  subtitle    String   @default("")
+  niche       String   @default("")
+  genre       String   @default("nonfiction")
+  status      String   @default("intake")
+  version     Int      @default(1)
+  wordTarget  Int      @default(50000)
+  wordCurrent Int      @default(0)
+  context     Json     @default("{}")
+  checkpoints Json     @default("{}")
+  chapters    Chapter[]
+  resources   ResourceChunk[]
+  executions  SkillExecution[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Chapter {
+  id            String   @id @default(uuid())
+  projectId     String
+  project       Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  chapterNumber Int
+  title         String
+  status        String   @default("not_started")
+  draftText     String?  @db.Text
+  approvedText  String?  @db.Text
+  wordCount     Int      @default(0)
+  confidenceScore Float?
+  flags         Json     @default("[]")
+  revisionHistory Json   @default("[]")
+  contextVersion Int     @default(1)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([projectId, chapterNumber])
+}
+
+model ResourceChunk {
+  id        String   @id @default(uuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  source    String
+  theme     String
+  keywords  Json
+  text      String   @db.Text
+  createdAt DateTime @default(now())
+}
+
+model SkillExecution {
+  id           String   @id @default(uuid())
+  projectId    String
+  project      Project  @relation(fields: [projectId], references: [id])
+  skillName    String
+  status       String   @default("pending")
+  inputSummary String?
+  output       Json?
+  error        String?
+  durationMs   Int?
+  createdAt    DateTime @default(now())
+}
+
+model QualityReport {
+  id                String   @id @default(uuid())
+  projectId         String   @unique
+  consistencyScore  Float?
+  consistencyReport Json?
+  originalityScores Json     @default("{}")
+  factReports       Json     @default("{}")
+  updatedAt         DateTime @updatedAt
+}
+
+enum Plan {
+  STARTER
+  PROFESSIONAL
+  STUDIO
+}
