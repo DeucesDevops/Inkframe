@@ -1,0 +1,42 @@
+# One-off Job to run Prisma migrations on each deployment.
+# Trigger manually or from your CI/CD pipeline before rolling out new pods.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: prisma-migrate
+  namespace: inkframe
+  labels:
+    app: prisma-migrate
+spec:
+  backoffLimit: 3
+  ttlSecondsAfterFinished: 3600
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: migrate
+          image: <AWS_ACCOUNT_ID>.dkr.ecr.<REGION>.amazonaws.com/inkframe/server:latest
+          command:
+            - sh
+            - -c
+            - |
+              echo "Running Prisma migrations..."
+              npx prisma migrate deploy
+              echo "Migrations complete."
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: inkframe-app-secrets
+                  key: DATABASE_URL
+            - name: PRISMA_CLIENT_ENGINE_TYPE
+              value: "library"
+            - name: PRISMA_DISABLE_QUERY_COMPILER
+              value: "true"
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
