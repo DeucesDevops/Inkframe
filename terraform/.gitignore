@@ -1,0 +1,19 @@
+# Local Terraform state (use S3 backend in production)
+*.tfstate
+*.tfstate.*
+*.tfstate.backup
+
+# Sensitive variable files
+terraform.tfvars
+*.auto.tfvars
+
+# Terraform working directory
+.terraform/
+.terraform.lock.hcl
+
+# Crash log files
+crash.log
+crash.*.log
+
+# Generated plan files
+*.tfplan
