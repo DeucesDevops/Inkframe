@@ -162,6 +162,33 @@ variable "redis_version" {
   default     = "7.1"
 }
 
+# ─── ArgoCD ──────────────────────────────────────────────────────────────────
+
+variable "argocd_hostname" {
+  description = "Hostname for the ArgoCD UI (e.g. argocd.inkframe.io)"
+  type        = string
+  default     = "argocd.inkframe.io"
+}
+
+variable "argocd_certificate_arn" {
+  description = "ACM certificate ARN for the ArgoCD ALB ingress (leave empty to skip TLS)"
+  type        = string
+  default     = ""
+}
+
+# ─── GitHub Actions ──────────────────────────────────────────────────────────
+
+variable "github_org" {
+  description = "GitHub organisation or user that owns the repository (e.g. DeucesDevops)"
+  type        = string
+}
+
+variable "github_repo" {
+  description = "GitHub repository name (e.g. Inkframe-mern)"
+  type        = string
+  default     = "Inkframe-mern"
+}
+
 # ─── ACM / Domain ────────────────────────────────────────────────────────────
 
 variable "domain_name" {

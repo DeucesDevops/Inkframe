@@ -15,7 +15,8 @@ spec:
       restartPolicy: OnFailure
       containers:
         - name: migrate
-          image: <AWS_ACCOUNT_ID>.dkr.ecr.<REGION>.amazonaws.com/inkframe/server:latest
+          # Image tag is substituted by the deploy pipeline at runtime.
+          image: inkframe/server:latest
           command:
             - sh
             - -c

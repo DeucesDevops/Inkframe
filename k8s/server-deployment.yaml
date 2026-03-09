@@ -31,8 +31,8 @@ spec:
 
       containers:
         - name: server
-          # Replace with your actual ECR URL after terraform apply
-          image: <AWS_ACCOUNT_ID>.dkr.ecr.<REGION>.amazonaws.com/inkframe/server:latest
+          # ECR URL and tag are injected by kustomize (see kustomization.yaml).
+          image: inkframe/server:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 5000

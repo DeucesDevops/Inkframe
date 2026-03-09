@@ -17,7 +17,7 @@ resource "aws_secretsmanager_secret_version" "redis" {
   secret_id     = aws_secretsmanager_secret.redis.id
   secret_string = jsonencode({
     auth_token = random_password.redis_auth.result
-    url        = "redis://:${random_password.redis_auth.result}@${aws_elasticache_replication_group.this.primary_endpoint_address}:6379"
+    url        = "rediss://:${random_password.redis_auth.result}@${aws_elasticache_replication_group.this.primary_endpoint_address}:6379"
   })
 }
 

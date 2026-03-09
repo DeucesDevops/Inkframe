@@ -1,0 +1,28 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - namespace.yaml
+  - external-secrets.yaml
+  - ingress.yaml
+  - server-deployment.yaml
+  - client-deployment.yaml
+
+# Image tags are updated by the deploy pipeline via:
+#   kustomize edit set image \
+#     inkframe/server=<ECR_REGISTRY>/inkframe/server:<TAG>
+#     inkframe/client=<ECR_REGISTRY>/inkframe/client:<TAG>
+#
+# On first deploy, replace REPLACE_WITH_ECR_REGISTRY with your actual
+# ECR registry URL (e.g. 123456789012.dkr.ecr.us-east-1.amazonaws.com)
+# then run: terraform output ecr_repository_urls
+images:
+  - name: inkframe/server
+    newName: REPLACE_WITH_ECR_REGISTRY/inkframe/server
+    newTag: latest
+  - name: inkframe/client
+    newName: REPLACE_WITH_ECR_REGISTRY/inkframe/client
+    newTag: latest
+
+# db-migration-job.yaml is intentionally excluded — it is a one-off Job
+# triggered by CI before each rollout, not a long-running managed resource.

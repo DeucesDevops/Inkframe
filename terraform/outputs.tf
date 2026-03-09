@@ -76,3 +76,15 @@ output "ecr_repository_urls" {
   description = "ECR repository URLs keyed by service name"
   value       = module.ecr.repository_urls
 }
+
+# ─── GitHub Actions ──────────────────────────────────────────────────────────
+
+output "github_deploy_role_arn" {
+  description = "ARN of the IAM role for the GitHub Actions deploy workflow (set as AWS_DEPLOY_ROLE_ARN secret)"
+  value       = aws_iam_role.github_deploy.arn
+}
+
+output "github_terraform_role_arn" {
+  description = "ARN of the IAM role for the GitHub Actions Terraform workflow (set as AWS_TERRAFORM_ROLE_ARN secret)"
+  value       = aws_iam_role.github_terraform.arn
+}

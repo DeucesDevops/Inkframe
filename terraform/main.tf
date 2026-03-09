@@ -90,7 +90,7 @@ module "ecr" {
 
   name             = var.project_name
   repository_names = ["client", "server"]
-  node_role_arn    = module.eks.cluster_autoscaler_role_arn # node role passed via ecr module var
+  node_role_arn    = module.eks.node_role_arn
 
   tags = local.common_tags
 }
@@ -186,6 +186,66 @@ resource "helm_release" "metrics_server" {
   depends_on = [module.eks]
 }
 
+# ─── IRSA: External Secrets Operator ─────────────────────────────────────────
+
+data "aws_iam_policy_document" "external_secrets_assume" {
+  statement {
+    actions = ["sts:AssumeRoleWithWebIdentity"]
+    effect  = "Allow"
+
+    condition {
+      test     = "StringEquals"
+      variable = "${module.eks.oidc_provider_url}:sub"
+      values   = ["system:serviceaccount:external-secrets:external-secrets"]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "${module.eks.oidc_provider_url}:aud"
+      values   = ["sts.amazonaws.com"]
+    }
+
+    principals {
+      identifiers = [module.eks.oidc_provider_arn]
+      type        = "Federated"
+    }
+  }
+}
+
+resource "aws_iam_role" "external_secrets" {
+  name               = "${local.cluster_name}-external-secrets"
+  assume_role_policy = data.aws_iam_policy_document.external_secrets_assume.json
+
+  tags = local.common_tags
+}
+
+resource "aws_iam_policy" "external_secrets" {
+  name        = "${local.cluster_name}-external-secrets"
+  description = "Allow external-secrets operator to read from Secrets Manager"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "secretsmanager:GetSecretValue",
+          "secretsmanager:DescribeSecret",
+          "secretsmanager:ListSecretVersionIds"
+        ]
+        Resource = "arn:aws:secretsmanager:${var.aws_region}:*:secret:${var.project_name}-*"
+      }
+    ]
+  })
+
+  tags = local.common_tags
+}
+
+resource "aws_iam_role_policy_attachment" "external_secrets" {
+  policy_arn = aws_iam_policy.external_secrets.arn
+  role       = aws_iam_role.external_secrets.name
+}
+
 # ─── Helm: External Secrets Operator ─────────────────────────────────────────
 
 resource "helm_release" "external_secrets" {
@@ -196,6 +256,11 @@ resource "helm_release" "external_secrets" {
   version    = "0.9.14"
 
   create_namespace = true
+
+  set {
+    name  = "serviceAccount.annotations.eks\\.amazonaws\\.com/role-arn"
+    value = aws_iam_role.external_secrets.arn
+  }
 
   depends_on = [module.eks]
 }
@@ -243,4 +308,259 @@ resource "kubernetes_manifest" "cluster_secret_store" {
   }
 
   depends_on = [helm_release.external_secrets]
+}
+
+# ─── Helm: Argo CD ───────────────────────────────────────────────────────────
+
+resource "helm_release" "argocd" {
+  name       = "argocd"
+  repository = "https://argoproj.github.io/argo-helm"
+  chart      = "argo-cd"
+  namespace  = "argocd"
+  version    = "7.3.11"
+
+  create_namespace = true
+
+  # Expose the server behind the ALB ingress controller using an Ingress.
+  # The UI is available at https://argocd.<your-domain> after DNS is wired up.
+  values = [
+    yamlencode({
+      server = {
+        service = {
+          type = "ClusterIP"
+        }
+        ingress = {
+          enabled     = true
+          ingressClassName = "alb"
+          annotations = {
+            "alb.ingress.kubernetes.io/scheme"       = "internet-facing"
+            "alb.ingress.kubernetes.io/target-type"  = "ip"
+            "alb.ingress.kubernetes.io/listen-ports" = "[{\"HTTPS\": 443}]"
+            "alb.ingress.kubernetes.io/certificate-arn" = var.argocd_certificate_arn
+          }
+          hosts = [var.argocd_hostname]
+          tls   = []
+        }
+        # Disable TLS termination at ArgoCD; ALB handles it
+        extraArgs = ["--insecure"]
+      }
+      # Disable the built-in Dex (SSO provider) — enable if you want SSO later
+      dex = {
+        enabled = false
+      }
+      # Resource limits for controller components
+      controller = {
+        resources = {
+          requests = { cpu = "250m", memory = "512Mi" }
+          limits   = { cpu = "1000m", memory = "1Gi" }
+        }
+      }
+      repoServer = {
+        resources = {
+          requests = { cpu = "100m", memory = "256Mi" }
+          limits   = { cpu = "500m", memory = "512Mi" }
+        }
+      }
+    })
+  ]
+
+  depends_on = [module.eks, helm_release.aws_load_balancer_controller]
+}
+
+# ─── ArgoCD Application: inkframe ────────────────────────────────────────────
+# Instructs ArgoCD to watch k8s/ in this repo and sync to the cluster.
+# For private repos, add credentials first:
+#   kubectl create secret generic inkframe-repo \
+#     --from-literal=type=git \
+#     --from-literal=url=https://github.com/<ORG>/<REPO>.git \
+#     --from-literal=password=<GITHUB_PAT> \
+#     --from-literal=username=x-token \
+#     -n argocd \
+#     --label=argocd.argoproj.io/secret-type=repository
+
+resource "kubernetes_manifest" "argocd_application" {
+  manifest = {
+    apiVersion = "argoproj.io/v1alpha1"
+    kind       = "Application"
+    metadata = {
+      name      = var.project_name
+      namespace = "argocd"
+      finalizers = ["resources-finalizer.argocd.argoproj.io"]
+    }
+    spec = {
+      project = "default"
+      source = {
+        repoURL        = "https://github.com/${var.github_org}/${var.github_repo}.git"
+        targetRevision = "main"
+        path           = "k8s"
+      }
+      destination = {
+        server    = "https://kubernetes.default.svc"
+        namespace = var.project_name
+      }
+      syncPolicy = {
+        automated = {
+          prune    = true
+          selfHeal = true
+        }
+        syncOptions = [
+          "CreateNamespace=true",
+          "ServerSideApply=true",
+        ]
+        retry = {
+          limit = 5
+          backoff = {
+            duration    = "5s"
+            factor      = 2
+            maxDuration = "3m"
+          }
+        }
+      }
+    }
+  }
+
+  depends_on = [helm_release.argocd]
+}
+
+# ─── GitHub Actions OIDC Provider ────────────────────────────────────────────
+# Allows GitHub Actions workflows to assume AWS roles without long-lived keys.
+
+resource "aws_iam_openid_connect_provider" "github_actions" {
+  url             = "https://token.actions.githubusercontent.com"
+  client_id_list  = ["sts.amazonaws.com"]
+  # Thumbprints for token.actions.githubusercontent.com (rotate if GitHub rotates certs)
+  thumbprint_list = [
+    "6938fd4d98bab03faadb97b34396831e3780aea1",
+    "1c58a3a8518e8759bf075b76b750d4f2df264fcd",
+  ]
+
+  tags = local.common_tags
+}
+
+# ─── GitHub Actions: Deploy Role ─────────────────────────────────────────────
+# Used by the deploy workflow: ECR push + EKS rolling update.
+
+data "aws_iam_policy_document" "github_deploy_assume" {
+  statement {
+    actions = ["sts:AssumeRoleWithWebIdentity"]
+    effect  = "Allow"
+
+    condition {
+      test     = "StringEquals"
+      variable = "token.actions.githubusercontent.com:aud"
+      values   = ["sts.amazonaws.com"]
+    }
+
+    condition {
+      test     = "StringLike"
+      variable = "token.actions.githubusercontent.com:sub"
+      # Restrict to pushes on main from your repo; adjust org/repo as needed.
+      values   = ["repo:${var.github_org}/${var.github_repo}:ref:refs/heads/main"]
+    }
+
+    principals {
+      type        = "Federated"
+      identifiers = [aws_iam_openid_connect_provider.github_actions.arn]
+    }
+  }
+}
+
+resource "aws_iam_role" "github_deploy" {
+  name               = "${local.name}-github-deploy"
+  assume_role_policy = data.aws_iam_policy_document.github_deploy_assume.json
+
+  tags = local.common_tags
+}
+
+resource "aws_iam_policy" "github_deploy" {
+  name        = "${local.name}-github-deploy"
+  description = "Permissions for the GitHub Actions deploy workflow"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "ECRAuth"
+        Effect = "Allow"
+        Action = ["ecr:GetAuthorizationToken"]
+        Resource = "*"
+      },
+      {
+        Sid    = "ECRPush"
+        Effect = "Allow"
+        Action = [
+          "ecr:BatchCheckLayerAvailability",
+          "ecr:GetDownloadUrlForLayer",
+          "ecr:BatchGetImage",
+          "ecr:PutImage",
+          "ecr:InitiateLayerUpload",
+          "ecr:UploadLayerPart",
+          "ecr:CompleteLayerUpload",
+          "ecr:DescribeRepositories",
+          "ecr:ListImages",
+          "ecr:DescribeImages",
+        ]
+        Resource = [
+          for name in ["client", "server"] :
+          "arn:aws:ecr:${var.aws_region}:*:repository/${var.project_name}/${name}"
+        ]
+      },
+      {
+        Sid    = "EKSDescribe"
+        Effect = "Allow"
+        Action = [
+          "eks:DescribeCluster",
+        ]
+        Resource = "arn:aws:eks:${var.aws_region}:*:cluster/${local.cluster_name}"
+      },
+    ]
+  })
+
+  tags = local.common_tags
+}
+
+resource "aws_iam_role_policy_attachment" "github_deploy" {
+  policy_arn = aws_iam_policy.github_deploy.arn
+  role       = aws_iam_role.github_deploy.name
+}
+
+# ─── GitHub Actions: Terraform Role ──────────────────────────────────────────
+# Used by the terraform workflow: plan + apply. Needs broad permissions.
+
+data "aws_iam_policy_document" "github_terraform_assume" {
+  statement {
+    actions = ["sts:AssumeRoleWithWebIdentity"]
+    effect  = "Allow"
+
+    condition {
+      test     = "StringEquals"
+      variable = "token.actions.githubusercontent.com:aud"
+      values   = ["sts.amazonaws.com"]
+    }
+
+    condition {
+      test     = "StringLike"
+      variable = "token.actions.githubusercontent.com:sub"
+      values   = ["repo:${var.github_org}/${var.github_repo}:*"]
+    }
+
+    principals {
+      type        = "Federated"
+      identifiers = [aws_iam_openid_connect_provider.github_actions.arn]
+    }
+  }
+}
+
+resource "aws_iam_role" "github_terraform" {
+  name               = "${local.name}-github-terraform"
+  assume_role_policy = data.aws_iam_policy_document.github_terraform_assume.json
+
+  tags = local.common_tags
+}
+
+# Attach AdministratorAccess so Terraform can manage any resource.
+# Scope this down further once your infrastructure is stable.
+resource "aws_iam_role_policy_attachment" "github_terraform_admin" {
+  policy_arn = "arn:aws:iam::aws:policy/AdministratorAccess"
+  role       = aws_iam_role.github_terraform.name
 }

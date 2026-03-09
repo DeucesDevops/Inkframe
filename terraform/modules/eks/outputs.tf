@@ -37,3 +37,13 @@ output "cluster_autoscaler_role_arn" {
   description = "IAM role ARN for the Cluster Autoscaler"
   value       = aws_iam_role.cluster_autoscaler.arn
 }
+
+output "node_role_arn" {
+  description = "IAM role ARN for EKS worker nodes"
+  value       = aws_iam_role.nodes.arn
+}
+
+output "oidc_provider_url" {
+  description = "OIDC provider URL (without https://) for IRSA trust policies"
+  value       = replace(aws_iam_openid_connect_provider.eks.url, "https://", "")
+}

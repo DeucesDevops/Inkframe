@@ -53,3 +53,11 @@ redis_version         = "7.1"
 # ─── Domain / TLS ───────────────────────────────────────────────────────────
 domain_name            = "inkframe.io"
 create_acm_certificate = true
+
+# ─── ArgoCD ─────────────────────────────────────────────────────────────────
+argocd_hostname        = "argocd.inkframe.io"
+argocd_certificate_arn = "arn:aws:acm:us-east-1:<ACCOUNT_ID>:certificate/<CERT_ID>"
+
+# ─── GitHub Actions ─────────────────────────────────────────────────────────
+github_org  = "DeucesDevops"
+github_repo = "Inkframe-mern"
