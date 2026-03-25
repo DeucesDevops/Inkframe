@@ -7,6 +7,7 @@ resources:
   - ingress.yaml
   - server-deployment.yaml
   - client-deployment.yaml
+  - monitoring.yaml
 
 # Image tags are updated by the deploy pipeline via:
 #   kustomize edit set image \
