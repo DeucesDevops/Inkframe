@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import { requireAuth } from '../middleware/auth.js'
-import prisma from '../db/client.js'
+import { prisma } from '../db/client.js'
 import { getPresignedUrl } from '../lib/s3.js'
 import { epubQueue, pdfQueue } from '../jobs/queue.js'
 
@@ -9,7 +9,7 @@ export const exportRouter = Router()
 // POST /api/export
 exportRouter.post('/', requireAuth, async (req, res) => {
   const { bookId, format } = req.body
-  const book = await prisma.book.findFirst({ where: { id: bookId, userId: req.userId } })
+  const book = await prisma.book.findFirst({ where: { id: bookId as string, userId: req.userId } })
   if (!book) return res.status(404).json({ error: 'Book not found' })
   const exportRecord = await prisma.export.create({
     data: { bookId, format, status: 'PENDING' },
@@ -26,10 +26,11 @@ exportRouter.post('/', requireAuth, async (req, res) => {
 
 // GET /api/export/:bookId
 exportRouter.get('/:bookId', requireAuth, async (req, res) => {
-  const book = await prisma.book.findFirst({ where: { id: req.params.bookId, userId: req.userId } })
+  const bookId = req.params.bookId as string
+  const book = await prisma.book.findFirst({ where: { id: bookId, userId: req.userId } })
   if (!book) return res.status(404).json({ error: 'Book not found' })
   const exports = await prisma.export.findMany({
-    where: { bookId: req.params.bookId },
+    where: { bookId },
     orderBy: { createdAt: 'desc' },
   })
   res.json(exports)
@@ -37,9 +38,10 @@ exportRouter.get('/:bookId', requireAuth, async (req, res) => {
 
 // GET /api/export/:id/download
 exportRouter.get('/:id/download', requireAuth, async (req, res) => {
+  const id = req.params.id as string
   const exportRecord = await prisma.export.findFirst({
-    where: { id: req.params.id },
-    include: { book: true },
+    where: { id },
+    include: { book: { select: { userId: true } } },
   })
   if (!exportRecord || exportRecord.book.userId !== req.userId) {
     return res.status(404).json({ error: 'Export not found' })

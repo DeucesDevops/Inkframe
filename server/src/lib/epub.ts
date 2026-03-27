@@ -1,4 +1,4 @@
-import EPub from 'epub-gen-memory'
+import { EPub } from 'epub-gen-memory'
 
 interface ChapterData {
   title: string
@@ -19,12 +19,12 @@ export async function generateEpub(book: BookData): Promise<Buffer> {
     author: book.author || 'Unknown Author',
     publisher: 'Inkframe',
     description: book.description || '',
-    content: book.chapters
-      .sort((a, b) => a.order - b.order)
-      .map(ch => ({
-        title: ch.title,
-        data: ch.content,
-      })),
   }
-  return Buffer.from(await EPub(options))
+  const chapters = book.chapters
+    .sort((a, b) => a.order - b.order)
+    .map(ch => ({ title: ch.title, content: ch.content }))
+
+  const epub = new EPub(options, chapters)
+  await epub.render()
+  return epub.genEpub()
 }
