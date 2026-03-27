@@ -1,8 +1,10 @@
 import { ElevenLabsClient } from 'elevenlabs'
 
-const eleven = new ElevenLabsClient({ apiKey: process.env.ELEVENLABS_API_KEY })
-
 export async function textToSpeech(text: string, voiceId: string): Promise<Buffer> {
+  if (!process.env.ELEVENLABS_API_KEY) {
+    throw new Error('ELEVENLABS_API_KEY is not set')
+  }
+  const eleven = new ElevenLabsClient({ apiKey: process.env.ELEVENLABS_API_KEY })
   const chunks: Buffer[] = []
 
   const audioStream = await eleven.generate({
