@@ -26,13 +26,18 @@ export default function BookModal({ open, onClose, onCreated }: Props) {
     if (!title.trim()) { setError('Title is required'); return }
     setLoading(true); setError('')
     try {
-      const { data } = await api.post('/api/books', { title, subtitle, genre, targetWords })
-      await qc.invalidateQueries({ queryKey: ['books'] })
+      const { data } = await api.post('/api/projects', { 
+        title, 
+        niche: subtitle, // mapping subtitle to niche for now
+        genre, 
+        wordTarget: targetWords 
+      })
+      await qc.invalidateQueries({ queryKey: ['projects'] })
       setTitle(''); setSubtitle(''); setGenre('nonfiction'); setTargetWords(50000)
       onCreated?.(data)
       onClose()
     } catch {
-      setError('Failed to create book')
+      setError('Failed to create project')
     } finally {
       setLoading(false)
     }

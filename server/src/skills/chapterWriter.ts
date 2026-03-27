@@ -72,14 +72,40 @@ Do NOT use: "it is important to note", "furthermore", "in conclusion", "delve in
 Do NOT open with a definition.
 Open with something that creates immediate engagement.`
 
-        // Stream response back to client
-        await executeSkillStream({
+        // Stream response back to client and capture full text
+        const fullText = await executeSkillStream({
             skillName: 'chapter-writer',
             systemPrompt,
             userPrompt,
             projectId,
             stream: true,
             res
+        })
+
+        // Parse metadata block from the end of the text
+        const metadataMatch = fullText.match(/---\nCONFIDENCE: ([\d.]+)\nFLAGS:\n([\s\S]*?)\nRECOMMENDED_ACTION: (.*)\n---/)
+        
+        let confidenceScore = 0.8
+        let flags: string[] = []
+        let cleanText = fullText
+
+        if (metadataMatch) {
+            confidenceScore = parseFloat(metadataMatch[1])
+            flags = metadataMatch[2].trim().split('\n').map(f => f.replace(/^- /, '').trim()).filter(Boolean)
+            // Remove metadata block from final text
+            cleanText = fullText.split('---')[0].trim()
+        }
+
+        // Persist to Chapter model
+        await prisma.chapter.update({
+            where: { projectId_chapterNumber: { projectId, chapterNumber } },
+            data: {
+                draftText: cleanText,
+                confidenceScore,
+                flags,
+                status: 'draft_generated',
+                updatedAt: new Date()
+            }
         })
     } catch (err) { next(err) }
 }

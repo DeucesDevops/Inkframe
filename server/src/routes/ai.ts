@@ -1,61 +1,11 @@
 import { Router } from 'express'
 import { requireAuth } from '../middleware/auth.js'
-import { streamCompletion } from '../lib/claude.js'
-import prisma from '../db/client.js'
+import * as ai from '../controllers/ai.js'
 
 export const aiRouter = Router()
 
-const OUTLINE_PROMPT = `You are an expert book planner. Given a title and genre, generate a complete book outline with 8-12 chapters. For each chapter provide: a title, a 2-sentence summary of what happens, and 3 key points to cover. Format as structured JSON with a "chapters" array.`
-
-const CONTINUE_PROMPT = `You are a skilled ghostwriter helping the user continue their book chapter. Match the existing writing style exactly — same tone, sentence length, vocabulary level, and narrative voice. Write the next 3-5 paragraphs that flow naturally from where the text ends. Do not summarise or change what came before.`
-
-const REWRITE_PROMPT = `You are an expert editor. Rewrite the provided text to improve clarity, flow, and impact while preserving the original meaning and the author's unique voice.`
-
-const SUMMARIZE_PROMPT = `You are an expert editor. Provide a concise, insightful summary of the chapter content provided. Capture the key points, themes, and narrative arc in 2-3 paragraphs.`
-
-const TITLE_PROMPT = `You are a book marketing expert. Based on the description provided, suggest 5 compelling, marketable book titles that would attract readers. For each title, briefly explain why it works. Return JSON with a "titles" array of objects with "title" and "reason" fields.`
-
-// POST /api/ai/outline
-aiRouter.post('/outline', requireAuth, async (req, res) => {
-  const { title, genre, bookId } = req.body
-  if (!title) return res.status(400).json({ error: 'Title required' })
-  if (bookId) {
-    const book = await prisma.book.findFirst({ where: { id: bookId, userId: req.userId } })
-    if (!book) return res.status(404).json({ error: 'Book not found' })
-  }
-  await streamCompletion(OUTLINE_PROMPT, `Title: ${title}\nGenre: ${genre || 'general'}`, res)
-})
-
-// POST /api/ai/continue
-aiRouter.post('/continue', requireAuth, async (req, res) => {
-  const { chapterTitle, existingContent } = req.body
-  if (!existingContent) return res.status(400).json({ error: 'Content required' })
-  const userPrompt = `Chapter: ${chapterTitle || 'Untitled'}\n\nExisting content:\n${existingContent}\n\nPlease continue writing from here.`
-  await streamCompletion(CONTINUE_PROMPT, userPrompt, res)
-})
-
-// POST /api/ai/rewrite
-aiRouter.post('/rewrite', requireAuth, async (req, res) => {
-  const { selectedText, tone } = req.body
-  if (!selectedText) return res.status(400).json({ error: 'Text required' })
-  const userPrompt = tone
-    ? `Rewrite the following text in a ${tone} tone:\n\n${selectedText}`
-    : `Rewrite the following text:\n\n${selectedText}`
-  await streamCompletion(REWRITE_PROMPT, userPrompt, res)
-})
-
-// POST /api/ai/summarize
-aiRouter.post('/summarize', requireAuth, async (req, res) => {
-  const { content, chapterTitle } = req.body
-  if (!content) return res.status(400).json({ error: 'Content required' })
-  const userPrompt = `Chapter: ${chapterTitle || 'Untitled'}\n\nContent:\n${content}`
-  await streamCompletion(SUMMARIZE_PROMPT, userPrompt, res)
-})
-
-// POST /api/ai/suggest-title
-aiRouter.post('/suggest-title', requireAuth, async (req, res) => {
-  const { description, genre } = req.body
-  if (!description) return res.status(400).json({ error: 'Description required' })
-  const userPrompt = `Genre: ${genre || 'general'}\nDescription: ${description}`
-  await streamCompletion(TITLE_PROMPT, userPrompt, res)
-})
+aiRouter.post('/outline', requireAuth, ai.generateOutline)
+aiRouter.post('/continue', requireAuth, ai.continueWriting)
+aiRouter.post('/rewrite', requireAuth, ai.rewriteText)
+aiRouter.post('/summarize', requireAuth, ai.summarizeChapter)
+aiRouter.post('/suggest-title', requireAuth, ai.suggestTitles)

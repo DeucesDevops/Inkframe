@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import { requireAuth } from '../middleware/auth.js'
-import prisma from '../db/client.js'
+import { prisma } from '../db/client.js'
 import { complete } from '../lib/claude.js'
 
 export const publishRouter = Router()

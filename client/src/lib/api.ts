@@ -1,7 +1,8 @@
 import axios from 'axios'
 
 const api = axios.create({
-    baseURL: process.env.NEXT_PUBLIC_API_URL,
+    // Empty baseURL — all /api/* calls go through Next.js rewrites → backend
+    baseURL: process.env.NEXT_PUBLIC_API_URL || '',
     withCredentials: true
 })
 

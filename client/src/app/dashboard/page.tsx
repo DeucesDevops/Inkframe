@@ -7,13 +7,14 @@ import api from '@/lib/api'
 import BookCard from '@/components/BookCard'
 import BookModal from '@/components/BookModal'
 
-interface Book {
+interface Project {
   id: string
   title: string
   subtitle?: string
   genre?: string
   status: string
-  targetWords?: number
+  wordTarget: number
+  wordCurrent: number
   _count: { chapters: number }
 }
 
@@ -21,9 +22,9 @@ export default function DashboardPage() {
   const router = useRouter()
   const [showModal, setShowModal] = useState(false)
 
-  const { data: books = [], isLoading, error } = useQuery<Book[]>({
-    queryKey: ['books'],
-    queryFn: async () => (await api.get('/api/books')).data,
+  const { data: projects = [], isLoading, error } = useQuery<Project[]>({
+    queryKey: ['projects'],
+    queryFn: async () => (await api.get('/api/projects')).data,
   })
 
   if (isLoading) return <div className="p-8 text-slate-500">Loading books...</div>
@@ -33,8 +34,8 @@ export default function DashboardPage() {
     <div className="space-y-8">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Your Books</h1>
-          <p className="text-slate-500 mt-1">{books.length} book{books.length !== 1 ? 's' : ''}</p>
+          <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Your Projects</h1>
+          <p className="text-slate-500 mt-1">{projects.length} project{projects.length !== 1 ? 's' : ''}</p>
         </div>
         <button
           onClick={() => setShowModal(true)}
@@ -42,18 +43,18 @@ export default function DashboardPage() {
         >+ New Book</button>
       </div>
 
-      {books.length === 0 ? (
+      {projects.length === 0 ? (
         <div className="bg-white border-2 border-dashed border-slate-200 rounded-2xl p-20 flex flex-col items-center justify-center space-y-4">
           <div className="text-5xl">📚</div>
-          <div className="text-slate-500 text-lg font-medium">No books yet</div>
+          <div className="text-slate-500 text-lg font-medium">No projects yet</div>
           <button
             onClick={() => setShowModal(true)}
             className="text-blue-600 font-semibold hover:underline"
-          >Start your first book today</button>
+          >Start your first project today</button>
         </div>
       ) : (
         <div className="grid gap-6 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
-          {books.map(book => <BookCard key={book.id} book={book} />)}
+          {projects.map((project: Project) => <BookCard key={project.id} book={project} />)}
         </div>
       )}
 

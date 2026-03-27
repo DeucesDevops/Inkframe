@@ -1,6 +1,6 @@
 import { Worker } from 'bullmq'
 import { Redis } from 'ioredis'
-import prisma from '../../db/client.js'
+import { prisma } from '../../db/client.js'
 import { textToSpeech } from '../../lib/tts.js'
 import { uploadToS3 } from '../../lib/s3.js'
 import { stripHtml } from '../../lib/htmlUtils.js'

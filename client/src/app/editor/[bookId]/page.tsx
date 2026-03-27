@@ -8,29 +8,34 @@ import api from '@/lib/api'
 import StatusBadge from '@/components/StatusBadge'
 import WordCounter from '@/components/Editor/WordCounter'
 
-interface Book {
+interface Project {
   id: string
   title: string
   subtitle?: string
   genre?: string
   status: string
-  targetWords?: number
+  wordTarget: number
+  wordCurrent: number
 }
 
 interface Chapter {
   id: string
+  projectId: string
+  chapterNumber: number
   title: string
-  content: string
-  order: number
-  wordCount: number
   status: string
+  draftText?: string
+  approvedText?: string
+  wordCount: number
+  confidenceScore?: number
+  flags?: string[]
 }
 
 type AITab = 'outline' | 'continue' | 'rewrite' | 'summarize'
 
 function useAutoSave(
-  bookId: string,
-  chapterId: string | null,
+  projectId: string,
+  chapterNum: number | null,
   title: string,
   content: string,
   delay = 30000
@@ -39,31 +44,31 @@ function useAutoSave(
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
-    if (!chapterId) return
+    if (chapterNum === null) return
     if (timer.current) clearTimeout(timer.current)
     timer.current = setTimeout(async () => {
       if (saved.current.title === title && saved.current.content === content) return
-      await api.patch(`/api/books/${bookId}/chapters/${chapterId}`, { title, content })
+      await api.patch(`/api/projects/${projectId}/chapters/${chapterNum}`, { title, draftText: content })
       saved.current = { title, content }
     }, delay)
     return () => { if (timer.current) clearTimeout(timer.current) }
-  }, [bookId, chapterId, title, content, delay])
+  }, [projectId, chapterNum, title, content, delay])
 }
 
 export default function EditorPage() {
-  const { bookId } = useParams<{ bookId: string }>()
+  const { bookId: projectId } = useParams<{ bookId: string }>()
 
-  const { data: book } = useQuery<Book>({
-    queryKey: ['book', bookId],
-    queryFn: async () => (await api.get(`/api/books/${bookId}`)).data,
+  const { data: project } = useQuery<Project>({
+    queryKey: ['project', projectId],
+    queryFn: async () => (await api.get(`/api/projects/${projectId}`)).data,
   })
 
   const { data: chapters = [], refetch: refetchChapters } = useQuery<Chapter[]>({
-    queryKey: ['chapters', bookId],
-    queryFn: async () => (await api.get(`/api/books/${bookId}/chapters`)).data,
+    queryKey: ['chapters', projectId],
+    queryFn: async () => (await api.get(`/api/projects/${projectId}/chapters`)).data,
   })
 
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [selectedNum, setSelectedNum] = useState<number | null>(null)
   const [chapterTitle, setChapterTitle] = useState('')
   const [content, setContent] = useState('')
   const [saving, setSaving] = useState(false)
@@ -71,34 +76,34 @@ export default function EditorPage() {
   const [aiOutput, setAiOutput] = useState('')
   const [aiStreaming, setAiStreaming] = useState(false)
 
-  const selected = chapters.find(c => c.id === selectedId)
+  const selected = chapters.find(c => c.chapterNumber === selectedNum)
 
   // Auto-select the first chapter on initial load
   useEffect(() => {
-    if (chapters.length > 0 && !selectedId) {
+    if (chapters.length > 0 && selectedNum === null) {
       const first = chapters[0]
-      setSelectedId(first.id)
+      setSelectedNum(first.chapterNumber)
       setChapterTitle(first.title)
-      setContent(first.content)
+      setContent(first.draftText || '')
     }
-  }, [chapters, selectedId])
+  }, [chapters, selectedNum])
 
   // Sync editor fields when selected chapter changes
   useEffect(() => {
     if (selected) {
       setChapterTitle(selected.title)
-      setContent(selected.content)
+      setContent(selected.draftText || '')
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selected?.id])
+  }, [selected?.chapterNumber])
 
-  useAutoSave(bookId, selectedId, chapterTitle, content)
+  useAutoSave(projectId, selectedNum, chapterTitle, content)
 
   async function saveNow() {
-    if (!selectedId) return
+    if (selectedNum === null) return
     setSaving(true)
     try {
-      await api.patch(`/api/books/${bookId}/chapters/${selectedId}`, { title: chapterTitle, content })
+      await api.patch(`/api/projects/${projectId}/chapters/${selectedNum}`, { title: chapterTitle, draftText: content })
       await refetchChapters()
     } finally {
       setSaving(false)
@@ -106,53 +111,36 @@ export default function EditorPage() {
   }
 
   async function addChapter() {
-    const { data } = await api.post(`/api/books/${bookId}/chapters`, {
-      title: `Chapter ${chapters.length + 1}`,
-      content: '',
-    })
-    await refetchChapters()
-    setSelectedId(data.id)
-    setChapterTitle(data.title)
-    setContent('')
+    // Current backend doesn't have a POST /api/projects/:id/chapters
+    // but we can update project context. For now, let's assume chapter 1-N exists.
+    alert('Please use the Outline Generator to create chapters first.')
   }
 
-  async function deleteChapter(id: string) {
-    if (!confirm('Delete this chapter?')) return
-    await api.delete(`/api/books/${bookId}/chapters/${id}`)
-    await refetchChapters()
-    if (selectedId === id) {
-      setSelectedId(null)
-      setChapterTitle('')
-      setContent('')
-    }
+  async function deleteChapter(num: number) {
+    alert('Chapter deletion is currently handled via the outline manager.')
   }
 
   async function streamAI() {
-    if (!selectedId || aiStreaming) return
+    if (selectedNum === null || aiStreaming) return
     setAiStreaming(true)
     setAiOutput('')
 
     let endpoint = ''
-    let body: Record<string, string> = {}
+    let body: Record<string, any> = {}
 
-    if (aiTab === 'outline') {
-      endpoint = '/api/ai/outline'
-      body = { title: book?.title || '', genre: book?.genre || '' }
-    } else if (aiTab === 'continue') {
-      endpoint = '/api/ai/continue'
-      body = { chapterTitle, existingContent: content }
-    } else if (aiTab === 'rewrite') {
-      endpoint = '/api/ai/rewrite'
-      body = { selectedText: content }
+    if (aiTab === 'continue') {
+      endpoint = '/api/skills/chapter-writer'
+      body = { projectId, chapterNumber: selectedNum, sectionIndex: 0 }
     } else {
-      endpoint = '/api/ai/summarize'
-      body = { content, chapterTitle }
+      // Fallback to old AI routes for other tabs until they are migrated to skills
+      if (aiTab === 'outline') endpoint = '/api/ai/outline'
+      else if (aiTab === 'rewrite') endpoint = '/api/ai/rewrite'
+      else endpoint = '/api/ai/summarize'
+      body = { title: project?.title, existingContent: content, selectedText: content, chapterTitle }
     }
 
     try {
-      // Read token directly from localStorage key used by api.ts / authStore
       const token = localStorage.getItem('inkframe_token')
-
       const resp = await fetch(`${process.env.NEXT_PUBLIC_API_URL}${endpoint}`, {
         method: 'POST',
         headers: {
@@ -175,14 +163,16 @@ export default function EditorPage() {
         for (const line of lines) {
           if (line.startsWith('data: ')) {
             const payload = line.slice(6)
-            if (payload === '[DONE]') break
+            if (payload === '[DONE]' || payload.includes('"done":true')) break
             try {
               const { text: chunk } = JSON.parse(payload)
-              setAiOutput(prev => prev + chunk)
+              if (chunk) setAiOutput(prev => prev + chunk)
             } catch { /* skip malformed SSE frames */ }
           }
         }
       }
+      // Refresh chapters to get the persisted draft
+      await refetchChapters()
     } finally {
       setAiStreaming(false)
     }
@@ -203,17 +193,17 @@ export default function EditorPage() {
           ← Dashboard
         </Link>
         <div className="flex-1 min-w-0">
-          <h1 className="text-lg font-bold text-slate-900 truncate">{book?.title}</h1>
+          <h1 className="text-lg font-bold text-slate-900 truncate">{project?.title}</h1>
           <p className="text-xs text-slate-400">{totalWords.toLocaleString()} total words</p>
         </div>
         <div className="flex items-center gap-3 flex-shrink-0">
-          {book?.status && <StatusBadge status={book.status} />}
+          {project?.status && <StatusBadge status={project.status} />}
           <Link
-            href={`/export/${bookId}`}
+            href={`/export/${projectId}`}
             className="text-sm bg-slate-900 text-white px-4 py-1.5 rounded-lg font-medium hover:bg-slate-800 transition-colors"
           >Export</Link>
           <Link
-            href={`/publish/${bookId}`}
+            href={`/publish/${projectId}`}
             className="text-sm border border-slate-300 text-slate-700 px-4 py-1.5 rounded-lg font-medium hover:bg-slate-50 transition-colors"
           >Publish</Link>
         </div>
@@ -230,25 +220,25 @@ export default function EditorPage() {
               <div
                 key={ch.id}
                 className={`flex items-center gap-2 px-4 py-2.5 cursor-pointer group transition-colors ${
-                  selectedId === ch.id
+                  selectedNum === ch.chapterNumber
                     ? 'bg-blue-50 border-l-2 border-blue-600'
                     : 'hover:bg-slate-50 border-l-2 border-transparent'
                 }`}
                 onClick={() => {
                   saveNow()
-                  setSelectedId(ch.id)
+                  setSelectedNum(ch.chapterNumber)
                   setChapterTitle(ch.title)
-                  setContent(ch.content)
+                  setContent(ch.draftText || '')
                 }}
               >
                 <div className="flex-1 min-w-0">
-                  <p className={`text-sm font-medium truncate ${selectedId === ch.id ? 'text-blue-700' : 'text-slate-700'}`}>
+                  <p className={`text-sm font-medium truncate ${selectedNum === ch.chapterNumber ? 'text-blue-700' : 'text-slate-700'}`}>
                     {ch.title}
                   </p>
                   <p className="text-xs text-slate-400">{ch.wordCount} words</p>
                 </div>
                 <button
-                  onClick={e => { e.stopPropagation(); deleteChapter(ch.id) }}
+                  onClick={e => { e.stopPropagation(); deleteChapter(ch.chapterNumber) }}
                   className="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-red-400 transition-all text-xl leading-none"
                   aria-label="Delete chapter"
                 >×</button>
@@ -265,7 +255,7 @@ export default function EditorPage() {
 
         {/* Editor */}
         <div className="flex-1 flex flex-col overflow-hidden">
-          {selectedId ? (
+          {selectedNum !== null ? (
             <>
               <div className="bg-white border-b border-slate-100 px-8 py-4 flex items-center gap-4 flex-shrink-0">
                 <input
@@ -289,7 +279,7 @@ export default function EditorPage() {
                 />
               </div>
               <div className="bg-white border-t border-slate-100 px-8 py-2 flex-shrink-0">
-                <WordCounter content={content} target={book?.targetWords} />
+                <WordCounter content={content} target={project?.wordTarget} />
               </div>
             </>
           ) : (
@@ -337,7 +327,7 @@ export default function EditorPage() {
           <div className="p-4 border-t border-slate-100 space-y-2 flex-shrink-0">
             <button
               onClick={streamAI}
-              disabled={aiStreaming || !selectedId}
+              disabled={aiStreaming || selectedNum === null}
               className="w-full bg-blue-600 text-white rounded-lg py-2 text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors"
             >{aiStreaming ? 'Generating...' : `Generate ${aiTab}`}</button>
             {aiOutput && !aiStreaming && (
@@ -345,6 +335,27 @@ export default function EditorPage() {
                 onClick={insertAiOutput}
                 className="w-full border border-blue-200 text-blue-600 rounded-lg py-2 text-sm font-medium hover:bg-blue-50 transition-colors"
               >Insert into Editor</button>
+            )}
+            
+            {selected?.confidenceScore && (
+              <div className="mt-4 p-3 bg-slate-50 rounded-lg border border-slate-100">
+                <div className="flex justify-between items-center mb-2">
+                  <span className="text-xs font-semibold text-slate-500 uppercase">AI Confidence</span>
+                  <span className={`text-xs font-bold ${selected.confidenceScore > 0.8 ? 'text-green-600' : 'text-amber-600'}`}>
+                    {(selected.confidenceScore * 100).toFixed(0)}%
+                  </span>
+                </div>
+                {selected.flags && selected.flags.length > 0 && (
+                  <div className="space-y-1">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase">Flags:</p>
+                    {selected.flags.map((flag, i) => (
+                      <p key={i} className="text-xs text-slate-600 flex gap-2">
+                        <span className="text-amber-500">⚠</span> {flag}
+                      </p>
+                    ))}
+                  </div>
+                )}
+              </div>
             )}
           </div>
         </div>

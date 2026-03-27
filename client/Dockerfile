@@ -18,6 +18,10 @@ COPY . .
 # Disable Next.js telemetry during the build
 ENV NEXT_TELEMETRY_DISABLED=1
 
+# API_URL is read by next.config.ts at build time to set rewrite destination
+ARG API_URL=http://server:5000
+ENV API_URL=$API_URL
+
 # Build the Next.js application
 RUN npm run build
 

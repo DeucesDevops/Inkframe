@@ -3,20 +3,20 @@
 import Link from 'next/link'
 import StatusBadge from './StatusBadge'
 
-interface Book {
+interface Project {
   id: string
   title: string
   subtitle?: string
   genre?: string
   status: string
-  targetWords?: number
+  wordTarget: number
+  wordCurrent: number
   _count?: { chapters: number }
-  chapters?: { wordCount: number }[]
 }
 
-export default function BookCard({ book }: { book: Book }) {
-  const totalWords = book.chapters?.reduce((s, c) => s + c.wordCount, 0) ?? 0
-  const target = book.targetWords ?? 50000
+export default function BookCard({ book }: { book: Project }) {
+  const totalWords = book.wordCurrent || 0
+  const target = book.wordTarget || 50000
   const pct = Math.min(100, Math.round((totalWords / target) * 100))
 
   return (

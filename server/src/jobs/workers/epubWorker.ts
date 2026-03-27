@@ -1,6 +1,6 @@
 import { Worker } from 'bullmq'
 import { Redis } from 'ioredis'
-import prisma from '../../db/client.js'
+import { prisma } from '../../db/client.js'
 import { generateEpub } from '../../lib/epub.js'
 import { uploadToS3 } from '../../lib/s3.js'
 
