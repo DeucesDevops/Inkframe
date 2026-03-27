@@ -5,8 +5,18 @@ import client from 'prom-client'
 import { authRouter } from './routes/auth.js'
 import { projectRouter } from './routes/projects.js'
 import { skillRouter } from './routes/skills.js'
+import { bookRouter } from './routes/books.js'
+import { chapterRouter } from './routes/chapters.js'
+import { aiRouter } from './routes/ai.js'
+import { exportRouter } from './routes/export.js'
+import { audioRouter } from './routes/audio.js'
+import { publishRouter } from './routes/publish.js'
+import { filesRouter } from './routes/files.js'
 import { errorHandler } from './middleware/errorHandler.js'
 import './jobs/workers/ingestionWorker.js'
+import './jobs/workers/epubWorker.js'
+import './jobs/workers/pdfWorker.js'
+import './jobs/workers/audioWorker.js'
 
 // ── Prometheus setup ─────────────────────────────────────────────────────────
 // Collect built-in Node.js metrics: event loop lag, heap, GC, active handles, etc.
@@ -64,6 +74,13 @@ app.get('/metrics', async (_req, res) => {
 app.use('/api/auth', authRouter)
 app.use('/api/projects', projectRouter)
 app.use('/api/skills', skillRouter)
+app.use('/api/books', bookRouter)
+app.use('/api/books/:bookId/chapters', chapterRouter)
+app.use('/api/ai', aiRouter)
+app.use('/api/export', exportRouter)
+app.use('/api/audio', audioRouter)
+app.use('/api/publish', publishRouter)
+app.use('/api/files', filesRouter)
 
 // Error Handler
 app.use(errorHandler)

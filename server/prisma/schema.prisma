@@ -16,6 +16,7 @@ model User {
   booksThisMonth Int     @default(0)
   resetAt      DateTime  @default(now())
   projects     Project[]
+  books        Book[]
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 }
@@ -99,4 +100,89 @@ enum Plan {
   STARTER
   PROFESSIONAL
   STUDIO
+}
+
+model Book {
+  id          String     @id @default(cuid())
+  userId      String
+  user        User       @relation(fields: [userId], references: [id])
+  title       String
+  subtitle    String?
+  description String?
+  genre       String?
+  targetWords Int?
+  status      BookStatus @default(DRAFT)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  chapters    BookChapter[]
+  exports     Export[]
+  audioFiles  AudioFile[]
+}
+
+enum BookStatus {
+  DRAFT
+  WRITING
+  EDITING
+  READY
+  PUBLISHED
+}
+
+model BookChapter {
+  id        String            @id @default(cuid())
+  bookId    String
+  book      Book              @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  title     String
+  content   String            @db.Text
+  order     Int
+  wordCount Int               @default(0)
+  status    BookChapterStatus @default(DRAFT)
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+}
+
+enum BookChapterStatus {
+  DRAFT
+  WRITING
+  COMPLETE
+}
+
+model Export {
+  id        String       @id @default(cuid())
+  bookId    String
+  book      Book         @relation(fields: [bookId], references: [id])
+  format    ExportFormat
+  status    JobStatus    @default(PENDING)
+  s3Key     String?
+  s3Url     String?
+  errorMsg  String?
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+}
+
+enum ExportFormat {
+  EPUB
+  PDF_DIGITAL
+  PDF_PRINT
+  DOCX
+}
+
+enum JobStatus {
+  PENDING
+  PROCESSING
+  DONE
+  FAILED
+}
+
+model AudioFile {
+  id        String    @id @default(cuid())
+  bookId    String
+  book      Book      @relation(fields: [bookId], references: [id])
+  chapterId String?
+  voice     String    @default("21m00Tcm4TlvDq8ikWAM")
+  status    JobStatus @default(PENDING)
+  s3Key     String?
+  s3Url     String?
+  errorMsg  String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 }
